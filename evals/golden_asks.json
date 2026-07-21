@@ -1,0 +1,447 @@
+{
+  "meta": {
+    "agent": "pm-copilot",
+    "version": "1.0",
+    "corpus": "product_context.md (AutoApply — C1 through C6)",
+    "rubric_dimensions": [
+      "clarity",
+      "testability",
+      "scope_fidelity",
+      "completeness",
+      "grounding"
+    ],
+    "categories": {
+      "grounded": "Ask is fully answerable from the corpus — crew should cite sections, no assumptions needed beyond PM-level calls",
+      "partially_grounded": "Some corpus context exists, but the ask spans beyond it — crew must ground what it can and flag what it can't",
+      "ungrounded": "No corpus context — crew must flag everything as assumption, use PLACEHOLDER pattern",
+      "scope_trap": "Ask invites scope creep or contains 'and' that implies multiple stories — crew should stay narrow or flag the split",
+      "adversarial": "Ask is vague, contradictory, or tests failure-mode defenses — crew should handle gracefully"
+    },
+    "scoring_guide": "LLM-as-judge scores each dimension 1-5. Reference stories are the anchor, not the ceiling — a crew output that improves on the reference is fine. The rubric judges the output against the reference on each dimension independently."
+  },
+
+  "golden_set": [
+    {
+      "id": "G01",
+      "category": "grounded",
+      "difficulty": "easy",
+      "ask": "Users keep missing when their saved jobs get reposted. We should notify them somehow.",
+      "corpus_sections_expected": ["C1", "C3", "C4", "C6"],
+      "expected_behaviors": [
+        "Researcher cites saved_jobs table (C1), repost detection via features view (C3), no notification infra (C4), and icebox digest item (C6)",
+        "Analyst scopes to email notification only — push/in-app out of scope (no infra exists per C4)",
+        "Analyst flags daily batch latency as a constraint from C3",
+        "Writer produces AC/ACE format with specific role 'job seeker' not bare 'user'",
+        "Assumptions include channel choice and daily cap value as PM calls"
+      ],
+      "reference_story": {
+        "title": "Saved Jobs – Repost Notification Email",
+        "story": "As a job seeker, I want to receive an email when a job I saved is reposted, so that I can decide whether it's still worth applying to.",
+        "acs": [
+          {"id": "AC1", "name": "Repost Notification Sent", "given": "a job seeker has a saved job that is detected as reposted", "when": "the daily check runs", "thens": ["The job seeker will receive one email per repost event.", "The email will link back to the posting with its current ghost-score."]},
+          {"id": "AC2", "name": "Daily Cap Reached", "given": "a job seeker has reached the daily notification cap", "when": "further repost events are detected that day", "thens": ["The additional events will be held and included in the next day's email."]},
+          {"id": "ACE1", "name": "Job Unsaved Before Check", "given": "a job seeker unsaved the job before the daily check runs", "when": "repost detection fires for that posting", "thens": ["No notification will be sent for that job."]},
+          {"id": "ACE2", "name": "Posting Deleted", "given": "a saved job's posting is deleted after a repost is detected", "when": "the notification email is generated", "thens": ["The item will be omitted from the email.", "A skip event will be logged with user ID, posting ID, and timestamp (UTC)."]}
+        ],
+        "assumptions_carried": [
+          "A1 — Email is the right channel; no channel-preference data exists.",
+          "A2 — Daily cadence is acceptable given batch ingest.",
+          "A3 — Cap value (N emails/day) is a PM call, not derivable from data."
+        ]
+      }
+    },
+
+    {
+      "id": "G02",
+      "category": "grounded",
+      "difficulty": "easy",
+      "ask": "We should show why a job got flagged as ghost.",
+      "corpus_sections_expected": ["C2", "C5"],
+      "expected_behaviors": [
+        "Researcher cites the three deterministic signals in features.sql (C2) and GUARDRAILS.md evidence panel call (C5)",
+        "Analyst scopes to Analyze page evidence panel — not Browse page, not appeal flow",
+        "Writer ACs reference specific signals (repost frequency, posting age, cross-board spread) by name",
+        "ACE covers signal unavailable / no history case"
+      ],
+      "reference_story": {
+        "title": "Analyze – Ghost-Flag Evidence Panel",
+        "story": "As a job seeker, I want to see the evidence behind a ghost flag, so that I can judge for myself whether to trust the score.",
+        "acs": [
+          {"id": "AC1", "name": "Evidence Displayed", "given": "a job seeker has analyzed a posting", "when": "the result is displayed", "thens": ["The three deterministic signals will be shown with their values alongside the verdict.", "The model's rationale will be displayed in full without truncation."]},
+          {"id": "ACE1", "name": "Missing Signal", "given": "a posting has no history for one of the signals", "when": "the evidence panel renders", "thens": ["The signal will be shown as \"No history\" rather than omitted."]}
+        ],
+        "assumptions_carried": [
+          "A1 — Evidence shows for both GHOST and REAL verdicts, not just GHOST.",
+          "A2 — Signal values are shown raw, not normalized."
+        ]
+      }
+    },
+
+    {
+      "id": "G03",
+      "category": "grounded",
+      "difficulty": "medium",
+      "ask": "Let people snooze a saved job instead of deleting it.",
+      "corpus_sections_expected": ["C1"],
+      "expected_behaviors": [
+        "Researcher identifies saved_jobs is binary today with no status field (C1)",
+        "Analyst identifies schema migration as a dependency",
+        "Analyst flags interaction with repost notifications if G01 is also built",
+        "Writer ACs cover snooze applied, snooze expires, and job closes while snoozed",
+        "Assumptions include preset durations as a PM call"
+      ],
+      "reference_story": {
+        "title": "Saved Jobs – Snooze a Saved Job",
+        "story": "As a job seeker, I want to snooze a saved job for a set period, so that I can keep my saved list focused without losing track of postings I might return to.",
+        "acs": [
+          {"id": "AC1", "name": "Snooze Applied", "given": "a job seeker is viewing a saved job", "when": "they select \"Snooze\" and a preset duration", "thens": ["The job will be hidden from the default saved list until the snooze expires.", "The job will appear under the \"Snoozed\" filter with its wake date."]},
+          {"id": "AC2", "name": "Snooze Expires", "given": "a snoozed job's duration elapses", "when": "the daily check runs", "thens": ["The job will return to the saved list marked \"Returned from snooze\"."]},
+          {"id": "ACE1", "name": "Job Closes While Snoozed", "given": "a job closes while it is snoozed", "when": "the snooze expires and the job would return", "thens": ["The job will return with a \"Closed\" indicator rather than silently disappearing."]},
+          {"id": "ACE2", "name": "Snooze Then Unsave", "given": "a job seeker has a snoozed job", "when": "they unsave it", "thens": ["The snooze will be cancelled and the job removed from all saved views."]}
+        ],
+        "assumptions_carried": [
+          "A1 — Presets of 1w / 2w / 1m are sufficient; custom durations out of scope.",
+          "A2 — Snoozed jobs are excluded from repost notifications; needs a product call."
+        ]
+      }
+    },
+
+    {
+      "id": "G04",
+      "category": "grounded",
+      "difficulty": "medium",
+      "ask": "The Browse page needs a way to filter out likely ghost jobs.",
+      "corpus_sections_expected": ["C2", "C5"],
+      "expected_behaviors": [
+        "Researcher identifies that ghost-score exists but is only shown on Analyze page (C2)",
+        "Researcher cites calm UI / sensitivity context from C5 — filter should not be alarmist",
+        "Analyst scopes to a filter toggle on Browse — not removing ghost postings, filtering them",
+        "Writer frames the filter language per GUARDRAILS.md — e.g. 'Hide flagged postings' not 'Remove ghosts'",
+        "ACE covers edge case where all results are filtered out (empty state)"
+      ],
+      "reference_story": {
+        "title": "Browse – Ghost Filter Toggle",
+        "story": "As a job seeker, I want to filter out postings likely to be ghost jobs from Browse results, so that I can focus my time on real opportunities.",
+        "acs": [
+          {"id": "AC1", "name": "Filter Toggle Available", "given": "a job seeker is on the Browse page", "when": "results are displayed", "thens": ["A toggle labeled \"Hide flagged postings\" will be visible in the filter bar.", "The toggle will default to off."]},
+          {"id": "AC2", "name": "Filter Applied", "given": "a job seeker enables the ghost filter toggle", "when": "the results list refreshes", "thens": ["Postings with a ghost score at or above the threshold will be hidden.", "A count of hidden postings will be shown (e.g. \"12 flagged postings hidden\")."]},
+          {"id": "ACE1", "name": "All Results Filtered", "given": "a job seeker enables the ghost filter", "when": "all results in the current view are above the threshold", "thens": ["An empty state will be shown with the message \"All results in this search are flagged — try adjusting your filters.\""]},
+          {"id": "ACE2", "name": "Filter Persists Across Pages", "given": "a job seeker has the ghost filter enabled", "when": "they navigate to the next page of results", "thens": ["The filter state will persist without requiring re-toggle."]}
+        ],
+        "assumptions_carried": [
+          "A1 — The threshold for filtering matches the existing ghost-score threshold (not a separate setting).",
+          "A2 — Filter state is session-only; does not persist across logins."
+        ]
+      }
+    },
+
+    {
+      "id": "G05",
+      "category": "partially_grounded",
+      "difficulty": "medium",
+      "ask": "We need a way for users to dispute a ghost score they think is wrong.",
+      "corpus_sections_expected": ["C2", "C5"],
+      "expected_behaviors": [
+        "Researcher cites C5 (users can disagree with the model) but notes no dispute mechanism exists",
+        "Analyst scopes to a feedback submission — not a score override, not a recalculation",
+        "Analyst flags that the backend for handling disputes does not exist in the corpus — dependency",
+        "Writer does not invent a dispute-resolution workflow; flags it as assumption",
+        "Grounding score should reflect that the dispute backend is entirely ungrounded"
+      ],
+      "reference_story": {
+        "title": "Analyze – Dispute Ghost Score",
+        "story": "As a job seeker, I want to submit feedback when I believe a ghost score is wrong, so that the platform can improve its accuracy over time.",
+        "acs": [
+          {"id": "AC1", "name": "Dispute Button Available", "given": "a job seeker is viewing an analyzed posting", "when": "the evidence panel is displayed", "thens": ["A \"Report inaccuracy\" link will be visible below the evidence panel."]},
+          {"id": "AC2", "name": "Dispute Submitted", "given": "a job seeker clicks \"Report inaccuracy\"", "when": "they select a reason and submit", "thens": ["A confirmation message will be shown: \"Thanks — your feedback helps improve our scoring.\"", "The dispute will be logged with posting ID, user ID, reason, and timestamp (UTC)."]},
+          {"id": "ACE1", "name": "Duplicate Dispute", "given": "a job seeker has already submitted a dispute for this posting", "when": "they click \"Report inaccuracy\" again", "thens": ["The button will be replaced with \"Feedback submitted\" and no duplicate will be created."]}
+        ],
+        "assumptions_carried": [
+          "A1 — Disputes are logged for review; they do not trigger an immediate score change.",
+          "A2 — Dispute reasons are a preset list (e.g. 'I was contacted', 'Company confirmed role is open', 'Other') — not free text.",
+          "A3 — No dispute-review workflow exists; backend handling is a separate story."
+        ]
+      }
+    },
+
+    {
+      "id": "G06",
+      "category": "partially_grounded",
+      "difficulty": "medium",
+      "ask": "Job seekers should be able to export their saved jobs as a CSV.",
+      "corpus_sections_expected": ["C1"],
+      "expected_behaviors": [
+        "Researcher cites saved_jobs table and History page (C1) but notes no export functionality exists",
+        "Analyst scopes to CSV export of saved jobs only — not analyzed results, not application history",
+        "Analyst flags that export column schema is a PM decision (assumption)",
+        "Writer ACs cover the download trigger, file contents, and empty-state edge case"
+      ],
+      "reference_story": {
+        "title": "Saved Jobs – CSV Export",
+        "story": "As a job seeker, I want to export my saved jobs as a CSV file, so that I can track my job search outside the platform.",
+        "acs": [
+          {"id": "AC1", "name": "Export Button Available", "given": "a job seeker is on the History page with saved jobs", "when": "the page loads", "thens": ["An \"Export CSV\" button will be visible in the page header."]},
+          {"id": "AC2", "name": "CSV Downloaded", "given": "a job seeker clicks \"Export CSV\"", "when": "the file is generated", "thens": ["A CSV file will be downloaded containing one row per saved job.", "Columns will include: job title, company, date saved, ghost score, and posting URL."]},
+          {"id": "ACE1", "name": "No Saved Jobs", "given": "a job seeker has no saved jobs", "when": "the History page loads", "thens": ["The \"Export CSV\" button will be hidden or disabled."]}
+        ],
+        "assumptions_carried": [
+          "A1 — Column schema (title, company, date saved, ghost score, URL) is assumed; PM to confirm.",
+          "A2 — Export includes all saved jobs, not a filtered subset."
+        ]
+      }
+    },
+
+    {
+      "id": "G07",
+      "category": "ungrounded",
+      "difficulty": "hard",
+      "ask": "We should add a referral program so users can invite friends.",
+      "corpus_sections_expected": [],
+      "expected_behaviors": [
+        "Researcher finds no relevant context — returns a single bullet stating this",
+        "Analyst flags everything as assumption (A1, A2, A3, ...)",
+        "Writer uses PLACEHOLDER pattern throughout — bracketed placeholders for role, reward structure, etc.",
+        "Story should still be structurally valid (AC/ACE format, GIVEN/WHEN/THEN) even though content is ungrounded",
+        "Grounding score should be LOW — this is the correct behavior"
+      ],
+      "reference_story": {
+        "title": "[Feature Name] – Referral Program (PLACEHOLDER)",
+        "story": "As a [role to be confirmed], I want to invite friends to AutoApply via a referral link, so that [outcome to be confirmed by PM].",
+        "acs": [
+          {"id": "AC1", "name": "Referral Link Generated (Assumed)", "given": "a [role to be confirmed] is on their account page", "when": "they click \"Invite a friend\"", "thens": ["A unique referral link will be generated and displayed.", "The link will be copyable to clipboard."]},
+          {"id": "ACE1", "name": "Review Gate", "given": "this story was generated without grounded context", "when": "it reaches PM review", "thens": ["Assumptions A1–A4 will be resolved before the story is committed."]}
+        ],
+        "assumptions_carried": [
+          "A1 — A referral program is the right growth mechanism; no user-research data exists.",
+          "A2 — Reward structure (credits, free months, etc.) is entirely a PM call.",
+          "A3 — No referral infrastructure exists; full backend is a separate epic.",
+          "A4 — The user role and benefit statement require PM confirmation."
+        ]
+      }
+    },
+
+    {
+      "id": "G08",
+      "category": "ungrounded",
+      "difficulty": "hard",
+      "ask": "Add dark mode.",
+      "corpus_sections_expected": [],
+      "expected_behaviors": [
+        "Researcher finds no relevant context — maybe tangentially notes C5 UI principles but nothing about theming",
+        "Analyst scopes narrowly to a theme toggle — not a full design-system overhaul",
+        "Writer uses PLACEHOLDER for design-token specifics",
+        "Even though ungrounded, the story should be structurally complete"
+      ],
+      "reference_story": {
+        "title": "[Feature Name] – Dark Mode Toggle (PLACEHOLDER)",
+        "story": "As a job seeker, I want to switch to a dark color theme, so that I can use AutoApply comfortably in low-light settings.",
+        "acs": [
+          {"id": "AC1", "name": "Toggle Available", "given": "a job seeker is on any page", "when": "they open the settings menu", "thens": ["A \"Dark mode\" toggle will be visible.", "The current theme state will be indicated."]},
+          {"id": "AC2", "name": "Theme Applied", "given": "a job seeker enables dark mode", "when": "the toggle is switched", "thens": ["The UI will re-render with the dark color theme without a page reload."]},
+          {"id": "ACE1", "name": "Preference Persists", "given": "a job seeker has enabled dark mode", "when": "they return in a new session", "thens": ["The dark theme will be applied on load without requiring re-toggle."]}
+        ],
+        "assumptions_carried": [
+          "A1 — No design tokens or theming infrastructure exists; implementation approach is a tech call.",
+          "A2 — Preference is stored per-user, not per-device.",
+          "A3 — All pages and components support dark mode; partial rollout is out of scope."
+        ]
+      }
+    },
+
+    {
+      "id": "G09",
+      "category": "scope_trap",
+      "difficulty": "hard",
+      "ask": "Users should be able to save jobs and get notified when similar ones appear.",
+      "corpus_sections_expected": ["C1", "C3", "C4"],
+      "expected_behaviors": [
+        "The ask contains 'and' linking two distinct capabilities — save (exists per C1) and similarity matching (does not exist)",
+        "Analyst should either split into two stories or scope to one and move the other to out-of-scope",
+        "Writer's 'I want' clause must NOT contain 'and' — skill rule",
+        "If the crew handles it as one story, the self-check should warn about the compound WHEN or the broad scope"
+      ],
+      "reference_story": {
+        "title": "Saved Jobs – Similar Job Alerts",
+        "story": "As a job seeker, I want to receive alerts when new postings similar to my saved jobs appear, so that I can discover relevant opportunities without manual searching.",
+        "acs": [
+          {"id": "AC1", "name": "Similar Job Detected", "given": "a job seeker has saved jobs and new postings are ingested", "when": "the daily similarity check runs", "thens": ["Postings above the similarity threshold will be identified per saved job."]},
+          {"id": "AC2", "name": "Alert Sent", "given": "similar postings are found", "when": "the alert is generated", "thens": ["The job seeker will receive one email listing up to 5 similar postings per saved job.", "Each item will show the job title, company, and similarity reason."]},
+          {"id": "ACE1", "name": "No Similar Jobs Found", "given": "no postings meet the similarity threshold", "when": "the daily check runs", "thens": ["No alert will be sent for that day."]}
+        ],
+        "assumptions_carried": [
+          "A1 — Saving already exists (C1); this story covers the alert capability only.",
+          "A2 — Similarity matching does not exist; the algorithm and threshold are a separate spike.",
+          "A3 — Email is the alert channel (same assumption as repost notifications).",
+          "A4 — Daily cadence matches batch ingest (C3)."
+        ]
+      },
+      "notes": "The reference story scopes to alerts only and moves save to out-of-scope (it already exists). The crew should recognize the compound ask and not produce a story with 'and' in the 'I want' clause."
+    },
+
+    {
+      "id": "G10",
+      "category": "scope_trap",
+      "difficulty": "hard",
+      "ask": "Build a dashboard that shows analytics, trends, ghost score distribution, and application success rates.",
+      "corpus_sections_expected": ["C2"],
+      "expected_behaviors": [
+        "The ask is a kitchen-sink feature — 4+ capabilities in one sentence",
+        "Analyst should flag this as too broad and suggest splitting into multiple stories",
+        "If the Writer proceeds, the happy-path AC count should approach or exceed 15, triggering the cap warning",
+        "The crew should scope to the narrowest useful first slice (e.g. ghost-score distribution only)"
+      ],
+      "reference_story": {
+        "title": "Dashboard – Ghost Score Distribution View",
+        "story": "As a job seeker, I want to see the distribution of ghost scores across my analyzed postings, so that I can understand the overall quality of jobs I'm finding.",
+        "acs": [
+          {"id": "AC1", "name": "Distribution Chart Displayed", "given": "a job seeker has analyzed at least one posting", "when": "they open the Dashboard page", "thens": ["A bar chart will show the distribution of ghost scores across all analyzed postings.", "The chart will group scores into buckets (0-20, 21-40, 41-60, 61-80, 81-100)."]},
+          {"id": "ACE1", "name": "No Analyzed Postings", "given": "a job seeker has not analyzed any postings", "when": "they open the Dashboard page", "thens": ["An empty state will be shown: \"Analyze some postings to see your score distribution.\""]}
+        ],
+        "assumptions_carried": [
+          "A1 — This story covers ghost-score distribution only; trends, analytics, and application success rates are separate stories.",
+          "A2 — The chart is read-only; no filtering or drill-down in this scope.",
+          "A3 — Score data is pulled from the existing Supabase store; no new data collection needed."
+        ]
+      },
+      "notes": "A well-behaved crew narrows this to one slice and explicitly names the rest as out-of-scope. Scope fidelity is the primary rubric dimension being tested."
+    },
+
+    {
+      "id": "G11",
+      "category": "adversarial",
+      "difficulty": "hard",
+      "ask": "Make it better.",
+      "corpus_sections_expected": [],
+      "expected_behaviors": [
+        "The ask is too vague to produce a meaningful story",
+        "Researcher finds nothing targeted to research",
+        "Analyst should flag massive ambiguity — everything is assumption",
+        "Writer should produce a heavily PLACEHOLDERed story or the crew should surface that the ask needs clarification",
+        "Grounding and completeness scores should be LOW — this is correct behavior"
+      ],
+      "reference_story": {
+        "title": "[Feature Name] – [Story Name] (PLACEHOLDER)",
+        "story": "As a [role to be confirmed], I want [action to be confirmed — the ask 'make it better' does not specify a capability], so that [outcome to be confirmed by PM].",
+        "acs": [
+          {"id": "AC1", "name": "Core Behavior (Unspecified)", "given": "a [role to be confirmed] performs the undefined action", "when": "the trigger condition is met [assumed]", "thens": ["The described capability will behave as specified — pending PM clarification of 'make it better'."]},
+          {"id": "ACE1", "name": "Review Gate", "given": "this story was generated from an ambiguous ask", "when": "it reaches PM review", "thens": ["The PM will define the specific capability before this story is committed."]}
+        ],
+        "assumptions_carried": [
+          "A1 — The ask does not specify a feature, user role, or success criterion.",
+          "A2 — Every field in this story requires PM clarification before commitment."
+        ]
+      },
+      "notes": "This tests the crew's honesty under ambiguity. A good crew does not confidently invent a feature from 'make it better.' It should maximally flag, minimally invent."
+    },
+
+    {
+      "id": "G12",
+      "category": "adversarial",
+      "difficulty": "hard",
+      "ask": "The ghost score should also factor in the company's Glassdoor rating, LinkedIn headcount trend, and whether the company has posted on Indeed in the last 30 days.",
+      "corpus_sections_expected": ["C2"],
+      "expected_behaviors": [
+        "Researcher identifies the three existing signals (C2) but notes that Glassdoor, LinkedIn, and Indeed integrations do not exist",
+        "Analyst should flag each external data source as a separate dependency/spike — not something to build in one story",
+        "Analyst should scope to one signal at a time or flag the whole ask as an epic needing decomposition",
+        "Writer should not produce ACs that assume these integrations exist",
+        "The crew defends against the 'invented scope' failure mode here"
+      ],
+      "reference_story": {
+        "title": "Ghost Score – Additional Signal Sources (Spike Recommended)",
+        "story": "As a job seeker, I want the ghost score to incorporate additional signals beyond the current three, so that the prediction is more accurate.",
+        "acs": [
+          {"id": "AC1", "name": "New Signal Integrated", "given": "a new signal source has been validated and integrated", "when": "a posting is analyzed", "thens": ["The ghost score will incorporate the new signal alongside the existing three.", "The evidence panel will display the new signal's contribution."]},
+          {"id": "ACE1", "name": "Signal Source Unavailable", "given": "an external data source is unreachable at analysis time", "when": "the classifier runs", "thens": ["The score will be computed using available signals only.", "The evidence panel will note which signals were unavailable."]}
+        ],
+        "assumptions_carried": [
+          "A1 — Glassdoor, LinkedIn, and Indeed each require separate API integrations that do not exist today — each is a spike.",
+          "A2 — Signal weighting and recalibration are required when adding new sources — a separate ML task.",
+          "A3 — This story assumes one signal is added at a time; the ask names three, which is likely an epic."
+        ]
+      },
+      "notes": "Tests whether the crew avoids treating three unbuilt integrations as in-scope for one story. The correct move is to flag as a spike or epic."
+    },
+
+    {
+      "id": "G13",
+      "category": "grounded",
+      "difficulty": "easy",
+      "ask": "The Analyze page should show when the posting was first seen.",
+      "corpus_sections_expected": ["C2", "C3"],
+      "expected_behaviors": [
+        "Researcher identifies posting age is already computed in features.sql (C2, C3)",
+        "Analyst scopes to displaying existing data — no new computation needed",
+        "This is a small, well-grounded ask that should produce a clean 2-3 AC story",
+        "Completeness score should note this is appropriately small — no need for many ACs"
+      ],
+      "reference_story": {
+        "title": "Analyze – Show First-Seen Date",
+        "story": "As a job seeker, I want to see when a posting was first detected by AutoApply, so that I can gauge how long it has been open.",
+        "acs": [
+          {"id": "AC1", "name": "First-Seen Date Displayed", "given": "a job seeker has analyzed a posting", "when": "the result is displayed", "thens": ["The posting's first-seen date will be shown in the evidence panel.", "The date will be formatted as a relative label (e.g. \"First seen 23 days ago\") with the absolute date on hover."]},
+          {"id": "ACE1", "name": "First-Seen Unknown", "given": "the posting was not tracked from its original appearance", "when": "the evidence panel renders", "thens": ["The first-seen field will show \"Unknown — first tracked [date]\" using the earliest record available."]}
+        ],
+        "assumptions_carried": [
+          "A1 — Posting age data from features.sql is surfaced as a user-facing date, not just a classifier input."
+        ]
+      }
+    },
+
+    {
+      "id": "G14",
+      "category": "partially_grounded",
+      "difficulty": "medium",
+      "ask": "Let users set up a daily email digest of new postings matching their search criteria.",
+      "corpus_sections_expected": ["C4", "C6"],
+      "expected_behaviors": [
+        "Researcher identifies the icebox email digest item (C6) as adjacent and Resend as the assumed provider (C4)",
+        "Researcher notes no search-criteria persistence or saved-search feature exists in the corpus",
+        "Analyst flags saved searches as a dependency that does not exist",
+        "Writer should not invent a search-saving mechanism in the ACs — flag as assumption"
+      ],
+      "reference_story": {
+        "title": "Search – Daily New-Posting Digest",
+        "story": "As a job seeker, I want to receive a daily email digest of new postings matching my saved search criteria, so that I can stay current without checking the platform every day.",
+        "acs": [
+          {"id": "AC1", "name": "Digest Received", "given": "a job seeker has at least one saved search with digest enabled", "when": "the daily digest job runs", "thens": ["The job seeker will receive one email listing new postings matching their saved criteria from the past 24 hours.", "Each listing will show job title, company, ghost score, and a link to the posting."]},
+          {"id": "AC2", "name": "No New Matches", "given": "no new postings match the saved criteria", "when": "the daily digest job runs", "thens": ["No email will be sent for that day."]},
+          {"id": "ACE1", "name": "Multiple Saved Searches", "given": "a job seeker has multiple saved searches with digest enabled", "when": "the daily digest job runs", "thens": ["All matching results will be consolidated into a single email, grouped by search."]}
+        ],
+        "assumptions_carried": [
+          "A1 — Saved searches do not exist today; that feature is a prerequisite (separate story).",
+          "A2 — Resend is the email provider (C4).",
+          "A3 — Adjacent to the icebox digest idea (C6) but distinct — this is search-based, not saved-job-based."
+        ]
+      }
+    },
+
+    {
+      "id": "G15",
+      "category": "scope_trap",
+      "difficulty": "medium",
+      "ask": "We need to track which jobs users apply to and whether they hear back.",
+      "corpus_sections_expected": ["C1"],
+      "expected_behaviors": [
+        "The ask contains two capabilities: tracking applications and tracking responses — likely two stories",
+        "Neither capability exists in the corpus; C1 covers saved jobs but not applications",
+        "Analyst should scope to application tracking only and move response tracking to out-of-scope or a second story",
+        "Writer should not invent an email-parsing or response-detection mechanism"
+      ],
+      "reference_story": {
+        "title": "Saved Jobs – Track Application Status",
+        "story": "As a job seeker, I want to mark a saved job as 'Applied' with the date I applied, so that I can track my application pipeline.",
+        "acs": [
+          {"id": "AC1", "name": "Mark as Applied", "given": "a job seeker is viewing a saved job", "when": "they click \"Mark as Applied\"", "thens": ["The job's status will change to \"Applied\".", "Today's date will be recorded as the application date.", "The job will move to an \"Applied\" section on the History page."]},
+          {"id": "ACE1", "name": "Already Applied", "given": "a job seeker has already marked a job as Applied", "when": "they view the job", "thens": ["The button will show \"Applied on [date]\" and will not allow a duplicate entry."]}
+        ],
+        "assumptions_carried": [
+          "A1 — Application tracking is a manual action (user clicks a button); not automated detection.",
+          "A2 — Response tracking ('did they hear back') is a separate story — scoped out of this one.",
+          "A3 — Requires a status field on saved_jobs (schema change, same dependency as snooze in G03)."
+        ]
+      },
+      "notes": "Tests whether the crew splits the compound ask and avoids inventing a response-tracking mechanism."
+    }
+  ]
+}
