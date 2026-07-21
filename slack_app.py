@@ -109,7 +109,20 @@ def crew_endpoint():
         duration = round(time.time() - t0, 1)
         print(f"  ✓ [API] Crew completed in {duration}s")
 
-        story = parse_story(outputs["writer_raw"])
+        try:
+            story = parse_story(outputs["writer_raw"])
+        except ValueError:
+            # If JSON is broken, return the raw text so the front-end can show something
+            return jsonify({
+                "ask": ask,
+                "story": {"title": "Story generated (raw)", "story": ask, "acs": [{"id": "AC1", "name": "See raw output", "given": "the crew completed", "when": "the story is reviewed", "thens": ["Review the raw output below."]}], "assumptions_carried": ["Raw output — JSON parsing failed."]},
+                "researcher_brief": outputs["researcher"],
+                "analyst_spec": outputs["analyst"],
+                "validation": {"errors": ["JSON parse failed — raw output returned"], "warnings": [], "passed": False},
+                "duration_s": duration,
+                "model_routing": {"researcher": "Haiku 4.5", "analyst": "Haiku 4.5", "writer": "Sonnet 4.6"},
+                "raw_writer": outputs["writer_raw"][:2000]
+            })
         errors, warnings = validate_story(story)
         print(f"  ✓ [API] Validation: {len(errors)} errors, {len(warnings)} warnings")
 
