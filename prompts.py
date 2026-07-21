@@ -12,16 +12,21 @@ scoped spec instead of asking for them.
 RESEARCHER = dict(
     role="Product Context Researcher",
     goal=(
-        "Given a rough feature ask, identify the relevant existing product "
-        "context: what already exists, what constrains the work, and what "
-        "related items sit in the backlog. Never answer the ask itself — "
-        "your output is a context brief for the Analyst."
+        "Given a rough feature ask, produce a context brief that helps the "
+        "Analyst scope the work. If a product corpus is provided, cite what's "
+        "relevant. Whether or not a corpus exists, apply your PM expertise to "
+        "identify: what typically already exists for this kind of feature, "
+        "common constraints, standard dependencies, and related considerations "
+        "a developer would need to know."
     ),
     backstory=(
-        "You are a meticulous researcher embedded in a product team. You "
-        "read roadmaps, schemas, and architecture notes, and you report only "
-        "what is actually documented. If the corpus contains nothing "
-        "relevant, you say so explicitly rather than inventing context."
+        "You are a meticulous senior PM researcher. You can work in two modes: "
+        "when a product corpus is available, you ground your brief in documented "
+        "facts. When no corpus matches the ask, you draw on broad product "
+        "management expertise to produce a useful context brief — identifying "
+        "typical system components, common constraints, standard patterns, and "
+        "questions the PM should answer. Either way, your output gives the "
+        "Analyst enough context to scope the work."
     ),
 )
 
@@ -69,32 +74,50 @@ WRITER = dict(
 # ── Task descriptions ────────────────────────────────────────────────────
 
 def researcher_task(ask: str, context_corpus: str) -> str:
-    return f"""Rough feature ask from the PM:
-"{ask}"
-
-Below is the product context corpus (roadmap, schemas, architecture notes).
-Read it and produce a CONTEXT BRIEF: 3-6 bullets covering (a) what already
-exists that is relevant to this ask, (b) constraints that shape the work,
-(c) related backlog items. Each bullet MUST cite its corpus section in
-parentheses (e.g., "(C2)"). If nothing in the corpus is relevant, output a
-single bullet saying exactly that — do not invent context.
-
-RULES:
-- Only include bullets that are DIRECTLY relevant to the ask. Do not include
-  every corpus section just because it exists.
-- Distinguish between "this exists and the ask builds on it" vs. "this is
-  tangentially related." Only include the former.
-- If a corpus section is adjacent but not needed for this ask, leave it out.
-  The Analyst will handle scope boundaries.
+    corpus_section = ""
+    if context_corpus and context_corpus.strip():
+        corpus_section = f"""
+A product context corpus is provided below. Check it for relevant context
+and cite any matching sections in parentheses (e.g., "(C2)").
 
 --- PRODUCT CONTEXT CORPUS ---
 {context_corpus}
---- END CORPUS ---"""
+--- END CORPUS ---
+"""
+
+    return f"""Rough feature ask from the PM:
+"{ask}"
+{corpus_section}
+Produce a CONTEXT BRIEF with 4-6 bullets covering:
+
+1. WHAT TYPICALLY EXISTS — What systems, components, or infrastructure would
+   a product team normally have in place for this kind of feature? If the
+   corpus has relevant entries, cite them. If not, describe what's standard.
+
+2. KEY CONSTRAINTS — What technical, business, or UX constraints typically
+   shape this kind of work? (e.g., API rate limits, data freshness, auth
+   requirements, mobile vs web, accessibility)
+
+3. DEPENDENCIES — What other systems, services, or teams would this feature
+   typically depend on?
+
+4. CONSIDERATIONS — What should the PM think about before scoping? Common
+   pitfalls, related features that interact with this, decisions that need
+   to be made.
+
+RULES:
+- If the corpus has relevant context, cite it and build on it.
+- If the corpus has NO relevant context, still produce a useful brief using
+  your PM expertise — do not just say "no context found" and stop.
+- Be specific to the domain of the ask (e.g., food delivery, e-commerce,
+  social media) — not generic PM advice.
+- Never invent specific product details (table names, endpoints, etc.) that
+  aren't in the corpus — but DO identify what kinds of components are typical."""
 
 
 RESEARCHER_EXPECTED = (
-    "A bulleted context brief (3-6 bullets), each citing its corpus section, "
-    "or a single bullet stating no relevant context was found."
+    "A context brief with 4-6 bullets covering what typically exists, "
+    "constraints, dependencies, and considerations for this kind of feature."
 )
 
 
